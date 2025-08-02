@@ -655,3 +655,9 @@ def test_coordinate_system_orientation(
     static_margin_nose_to_tail = rocket_nose_to_tail.static_margin
 
     assert np.array_equal(static_margin_tail_to_nose, static_margin_nose_to_tail)
+
+
+def test_test_method_prints_Test(capsys, calisto):
+    calisto.test()
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "Test"
