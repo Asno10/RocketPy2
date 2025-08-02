@@ -1,7 +1,9 @@
 from unittest.mock import patch
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from mpl_toolkits.mplot3d import Axes3D
 
 from rocketpy import Function, NoseCone, Rocket, SolidMotor
 from rocketpy.mathutils.vector_matrix import Vector
@@ -676,3 +678,25 @@ def test_drag_coefficients_with_altitude():
     cd_low = rocket.power_off_drag.get_value_opt(0.5, 0)
     cd_high = rocket.power_off_drag.get_value_opt(0.5, 1000)
     assert not np.isclose(cd_low, cd_high)
+
+
+@patch("matplotlib.pyplot.show")
+def test_drag_curves_plot_3d(mock_show):
+    drag_data = [
+        [0, 0, 0.1],
+        [1, 0, 0.2],
+        [0, 1000, 0.3],
+        [1, 1000, 0.4],
+    ]
+    rocket = Rocket(
+        radius=0.0635,
+        mass=14.426,
+        inertia=(6.321, 6.321, 0.034),
+        power_off_drag=drag_data,
+        power_on_drag=drag_data,
+        center_of_mass_without_motor=0,
+    )
+    rocket.plots.drag_curves()
+    ax = plt.gca()
+    assert isinstance(ax, Axes3D)
+    plt.close("all")
