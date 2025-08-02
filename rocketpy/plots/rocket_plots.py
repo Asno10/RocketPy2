@@ -103,21 +103,43 @@ class _RocketPlots:
         None
         """
 
-        try:
-            x_power_drag_on = self.rocket.power_on_drag.x_array
-            y_power_drag_on = self.rocket.power_on_drag.y_array
-        except AttributeError:
+        if self.rocket.power_on_drag.get_domain_dim() == 1:
+            try:
+                x_power_drag_on = self.rocket.power_on_drag.x_array
+                y_power_drag_on = self.rocket.power_on_drag.y_array
+            except AttributeError:
+                x_power_drag_on = np.linspace(0, 2, 50)
+                y_power_drag_on = np.array(
+                    [self.rocket.power_on_drag.get_value_opt(x) for x in x_power_drag_on]
+                )
+        else:
             x_power_drag_on = np.linspace(0, 2, 50)
             y_power_drag_on = np.array(
-                [self.rocket.power_on_drag.source(x) for x in x_power_drag_on]
+                [
+                    self.rocket.power_on_drag.get_value_opt(x, 0)
+                    for x in x_power_drag_on
+                ]
             )
-        try:
-            x_power_drag_off = self.rocket.power_off_drag.x_array
-            y_power_drag_off = self.rocket.power_off_drag.y_array
-        except AttributeError:
+
+        if self.rocket.power_off_drag.get_domain_dim() == 1:
+            try:
+                x_power_drag_off = self.rocket.power_off_drag.x_array
+                y_power_drag_off = self.rocket.power_off_drag.y_array
+            except AttributeError:
+                x_power_drag_off = np.linspace(0, 2, 50)
+                y_power_drag_off = np.array(
+                    [
+                        self.rocket.power_off_drag.get_value_opt(x)
+                        for x in x_power_drag_off
+                    ]
+                )
+        else:
             x_power_drag_off = np.linspace(0, 2, 50)
             y_power_drag_off = np.array(
-                [self.rocket.power_off_drag.source(x) for x in x_power_drag_off]
+                [
+                    self.rocket.power_off_drag.get_value_opt(x, 0)
+                    for x in x_power_drag_off
+                ]
             )
 
         _, ax = plt.subplots()

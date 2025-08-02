@@ -414,7 +414,7 @@ class StochasticModel:
         if input_value is not None:
             error_msg = (
                 f"`{input_name}` must be a list of path strings, lists "
-                "with shape (n,2), or Functions."
+                "with shape (n,2) or (n,3), or Functions."
             )
 
             if not isinstance(input_value, list):
@@ -422,7 +422,10 @@ class StochasticModel:
 
             for member in input_value:
                 if isinstance(member, list):
-                    if len(np.shape(member)) != 2 or np.shape(member)[1] != 2:
+                    if (
+                        len(np.shape(member)) != 2
+                        or np.shape(member)[1] not in (2, 3)
+                    ):
                         raise AssertionError(error_msg)
                 elif not isinstance(member, (str, Function)):
                     raise AssertionError(error_msg)
