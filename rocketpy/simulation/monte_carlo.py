@@ -339,11 +339,13 @@ class MonteCarlo:
         with _create_multiprocess_manager(multiprocess, managers) as manager:
             mutex = manager.Lock()
             simulation_error_event = manager.Event()
-            sim_monitor = manager._SimMonitor(
+            progress_queue = manager.Queue()
+            sim_monitor = _SimMonitor(
                 initial_count=self._initial_sim_idx,
                 n_simulations=self.number_of_simulations,
                 start_time=time(),
             )
+            index_counter = multiprocess.Value("i", self._initial_sim_idx)
 
             processes = []
             seeds = np.random.SeedSequence().spawn(n_workers)
@@ -353,15 +355,21 @@ class MonteCarlo:
                     target=self.__sim_producer,
                     args=(
                         seed,
-                        sim_monitor,
+                        index_counter,
                         mutex,
                         simulation_error_event,
+                        progress_queue,
                     ),
                 )
                 processes.append(sim_producer)
                 sim_producer.start()
 
             try:
+                for _ in range(self.number_of_simulations):
+                    progress_queue.get()
+                    sim_monitor.increment()
+                    sim_monitor.print_update_status(sim_monitor.count)
+
                 for sim_producer in processes:
                     sim_producer.join()
 
@@ -394,19 +402,21 @@ class MonteCarlo:
             raise ValueError("Number of workers must be at least 2 for parallel mode.")
         return n_workers
 
-    def __sim_producer(self, seed, sim_monitor, mutex, error_event):  # pylint: disable=too-many-statements
+    def __sim_producer(self, seed, index_counter, mutex, error_event, progress_queue):  # pylint: disable=too-many-statements
         """Simulation producer to be used in parallel by multiprocessing.
 
         Parameters
         ----------
         seed : int
             The seed to set the random number generator.
-        sim_monitor : _SimMonitor
-            The simulation monitor object to keep track of the simulations.
+        index_counter : multiprocess.Value
+            Shared counter for assigning simulation indices.
         mutex : multiprocess.Lock
             The mutex to lock access to critical regions.
         error_event : multiprocess.Event
             Event signaling an error occurred during the simulation.
+        progress_queue : multiprocess.Queue
+            Queue used to report completed simulations back to the main process.
         """
         try:
             # Ensure Processes generate different random numbers
@@ -414,8 +424,12 @@ class MonteCarlo:
             self.rocket._set_stochastic(seed)
             self.flight._set_stochastic(seed)
 
-            while sim_monitor.keep_simulating():
-                sim_idx = sim_monitor.increment() - 1
+            while True:
+                with index_counter.get_lock():
+                    sim_idx = index_counter.value
+                    index_counter.value += 1
+                if sim_idx >= self.number_of_simulations:
+                    break
                 inputs_json, outputs_json = "", ""
 
                 flight = self.__run_single_simulation()
@@ -425,22 +439,15 @@ class MonteCarlo:
                 try:
                     mutex.acquire()
                     if error_event.is_set():
-                        sim_monitor.reprint(
-                            "Simulation Interrupt, files from simulation "
-                            f"{sim_idx} saved.",
-                            always=True,
-                        )
                         with open(self.error_file, "a", encoding="utf-8") as f:
                             f.write(inputs_json)
-
                         break
 
                     with open(self.input_file, "a", encoding="utf-8") as f:
                         f.write(inputs_json)
                     with open(self.output_file, "a", encoding="utf-8") as f:
                         f.write(outputs_json)
-
-                    sim_monitor.print_update_status(sim_idx)
+                    progress_queue.put(1)
                 finally:
                     mutex.release()
 
@@ -449,8 +456,8 @@ class MonteCarlo:
             with open(self.error_file, "a", encoding="utf-8") as f:
                 f.write(inputs_json)
 
-            sim_monitor.reprint(f"Error on iteration {sim_idx}:", always=True)
-            sim_monitor.reprint(traceback.format_exc(), always=True)
+            _SimMonitor.reprint(f"Error on iteration {sim_idx}:", always=True)
+            _SimMonitor.reprint(traceback.format_exc(), always=True)
             error_event.set()
             mutex.release()
 
