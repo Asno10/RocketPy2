@@ -252,6 +252,20 @@ class Function:  # pylint: disable=too-many-public-methods
         else:
             self._source_type = SourceType.ARRAY
             # Evaluate dimension
+            if (
+                isinstance(self.__inputs__, str)
+                or (
+                    isinstance(self.__inputs__, (list, tuple))
+                    and len(self.__inputs__) == 1
+                )
+            ) and source.shape[1] > 2:
+                # If a single input name is provided but the source has
+                # extra columns, keep only the first and last columns so
+                # the resulting Function behaves as 1-D. This avoids raising
+                # errors when users supply data files with auxiliary columns
+                # that should be ignored.
+                source = source[:, [0, -1]]
+
             self.__dom_dim__ = source.shape[1] - 1
             self._domain = source[:, :-1]
             self._image = source[:, -1]

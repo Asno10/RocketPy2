@@ -1199,3 +1199,21 @@ def test_short_time_fft(
         else:
             assert np.all(frequencies >= -sampling_frequency / 2)
             assert np.all(frequencies <= sampling_frequency / 2)
+
+
+def test_function_single_input_with_extra_columns():
+    """Ensure Function handles extra data columns when only one input name is provided."""
+
+    data = np.array(
+        [
+            [0.0, 10.0, 0.0],
+            [0.5, 15.0, 0.5],
+            [1.0, 20.0, 1.0],
+        ]
+    )
+
+    func = Function(data, "x", "y")
+
+    assert np.isclose(func(0.0), 0.0)
+    assert np.isclose(func(1.0), 1.0)
+    assert func.get_domain_dim() == 1
