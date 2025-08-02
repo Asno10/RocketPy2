@@ -1217,4 +1217,4 @@ def test_drag_curve_csv_with_extra_columns(tmp_path):
         ValueError,
         match="Drag curve data must contain exactly two input columns: Mach and altitude",
     ):
-        Function(str(csv_file), inputs=["Mach", "Altitude"], outputs="Drag Coefficient")
+        Function(str(csv_file))
