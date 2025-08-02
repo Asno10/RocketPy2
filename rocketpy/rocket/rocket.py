@@ -336,19 +336,24 @@ class Rocket:
         )
 
         # Define aerodynamic drag coefficients
-        self.power_off_drag = Function(
-            power_off_drag,
-            "Mach Number",
-            "Drag Coefficient with Power Off",
-            "linear",
-            "constant",
+        def _setup_drag_function(source, output_name):
+            drag = Function(
+                source,
+                interpolation="linear",
+                extrapolation="constant",
+            )
+            drag.set_outputs(output_name)
+            if drag.get_domain_dim() == 1:
+                drag.set_inputs("Mach Number")
+            else:
+                drag.set_inputs(["Mach Number", "Altitude (m)"])
+            return drag
+
+        self.power_off_drag = _setup_drag_function(
+            power_off_drag, "Drag Coefficient with Power Off"
         )
-        self.power_on_drag = Function(
-            power_on_drag,
-            "Mach Number",
-            "Drag Coefficient with Power On",
-            "linear",
-            "constant",
+        self.power_on_drag = _setup_drag_function(
+            power_on_drag, "Drag Coefficient with Power On"
         )
 
         # Create a, possibly, temporary empty motor

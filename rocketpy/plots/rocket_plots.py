@@ -102,6 +102,13 @@ class _RocketPlots:
         -------
         None
         """
+        if (
+            self.rocket.power_on_drag.get_domain_dim() > 1
+            or self.rocket.power_off_drag.get_domain_dim() > 1
+        ):
+            self.rocket.power_on_drag.plot()
+            self.rocket.power_off_drag.plot()
+            return
 
         try:
             x_power_drag_on = self.rocket.power_on_drag.x_array
