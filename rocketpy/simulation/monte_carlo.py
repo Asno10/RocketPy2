@@ -336,10 +336,10 @@ class MonteCarlo:
 
         multiprocess, managers = _import_multiprocess()
 
+        progress_queue = multiprocess.Queue()
         with _create_multiprocess_manager(multiprocess, managers) as manager:
             mutex = manager.Lock()
             simulation_error_event = manager.Event()
-            progress_queue = manager.Queue()
             sim_monitor = _SimMonitor(
                 initial_count=self._initial_sim_idx,
                 n_simulations=self.number_of_simulations,
@@ -365,8 +365,10 @@ class MonteCarlo:
                 sim_producer.start()
 
             try:
-                for _ in range(self.number_of_simulations):
+                completed = 0
+                while completed < self.number_of_simulations:
                     progress_queue.get()
+                    completed += 1
                     sim_monitor.increment()
                     sim_monitor.print_update_status(sim_monitor.count)
 
