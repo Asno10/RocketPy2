@@ -2004,3 +2004,7 @@ class Rocket:
             )
 
         return rocket
+
+    def test(self):
+        """Prints a simple test message."""
+        print("Test")
