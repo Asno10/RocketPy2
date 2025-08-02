@@ -330,7 +330,17 @@ class MonteCarlo:
         with _create_multiprocess_manager(multiprocess, managers) as manager:
             mutex = manager.Lock()
             simulation_error_event = manager.Event()
-            sim_monitor = manager._SimMonitor(
+            progress_queue = manager.Queue()
+
+            # Shared counter used by workers to request new simulation indices
+            shared_counter = manager._SimMonitor(
+                initial_count=self._initial_sim_idx,
+                n_simulations=self.number_of_simulations,
+                start_time=time(),
+            )
+
+            # Local monitor used only by the main process for progress reporting
+            sim_monitor = _SimMonitor(
                 initial_count=self._initial_sim_idx,
                 n_simulations=self.number_of_simulations,
                 start_time=time(),
@@ -344,15 +354,23 @@ class MonteCarlo:
                     target=self.__sim_producer,
                     args=(
                         seed,
-                        sim_monitor,
+                        shared_counter,
                         mutex,
                         simulation_error_event,
+                        progress_queue,
                     ),
                 )
                 processes.append(sim_producer)
                 sim_producer.start()
 
             try:
+                completed = 0
+                while completed < self.number_of_simulations and not simulation_error_event.is_set():
+                    progress_queue.get()
+                    completed += 1
+                    sim_monitor.increment()
+                    sim_monitor.print_update_status(sim_monitor.count)
+
                 for sim_producer in processes:
                     sim_producer.join()
 
@@ -385,7 +403,7 @@ class MonteCarlo:
             raise ValueError("Number of workers must be at least 2 for parallel mode.")
         return n_workers
 
-    def __sim_producer(self, seed, sim_monitor, mutex, error_event):  # pylint: disable=too-many-statements
+    def __sim_producer(self, seed, sim_monitor, mutex, error_event, queue):  # pylint: disable=too-many-statements
         """Simulation producer to be used in parallel by multiprocessing.
 
         Parameters
@@ -430,7 +448,7 @@ class MonteCarlo:
                     with open(self.output_file, "a", encoding="utf-8") as f:
                         f.write(outputs_json)
 
-                    sim_monitor.print_update_status(sim_idx)
+                    queue.put(1)
                 finally:
                     mutex.release()
 
