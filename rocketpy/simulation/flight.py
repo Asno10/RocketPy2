@@ -1349,7 +1349,12 @@ class Flight:
             + (vz) ** 2
         ) ** 0.5
         free_stream_mach = free_stream_speed / self.env.speed_of_sound.get_value_opt(z)
-        drag_coeff = self.rocket.power_on_drag.get_value_opt(free_stream_mach)
+        if self.rocket.power_on_drag.get_domain_dim() == 1:
+            drag_coeff = self.rocket.power_on_drag.get_value_opt(free_stream_mach)
+        else:
+            drag_coeff = self.rocket.power_on_drag.get_value_opt(
+                free_stream_mach, z
+            )
 
         # Calculate Forces
         pressure = self.env.pressure.get_value_opt(z)
@@ -1520,9 +1525,19 @@ class Flight:
         # Determine aerodynamics forces
         # Determine Drag Force
         if t < self.rocket.motor.burn_out_time:
-            drag_coeff = self.rocket.power_on_drag.get_value_opt(free_stream_mach)
+            if self.rocket.power_on_drag.get_domain_dim() == 1:
+                drag_coeff = self.rocket.power_on_drag.get_value_opt(free_stream_mach)
+            else:
+                drag_coeff = self.rocket.power_on_drag.get_value_opt(
+                    free_stream_mach, z
+                )
         else:
-            drag_coeff = self.rocket.power_off_drag.get_value_opt(free_stream_mach)
+            if self.rocket.power_off_drag.get_domain_dim() == 1:
+                drag_coeff = self.rocket.power_off_drag.get_value_opt(free_stream_mach)
+            else:
+                drag_coeff = self.rocket.power_off_drag.get_value_opt(
+                    free_stream_mach, z
+                )
         rho = self.env.density.get_value_opt(z)
         R3 = -0.5 * rho * (free_stream_speed**2) * self.rocket.area * drag_coeff
         for air_brakes in self.rocket.air_brakes:
@@ -1797,10 +1812,20 @@ class Flight:
                 + self.rocket.motor.pressure_thrust(pressure),
                 0,
             )
-            drag_coeff = self.rocket.power_on_drag.get_value_opt(free_stream_mach)
+            if self.rocket.power_on_drag.get_domain_dim() == 1:
+                drag_coeff = self.rocket.power_on_drag.get_value_opt(free_stream_mach)
+            else:
+                drag_coeff = self.rocket.power_on_drag.get_value_opt(
+                    free_stream_mach, z
+                )
         else:
             net_thrust = 0
-            drag_coeff = self.rocket.power_off_drag.get_value_opt(free_stream_mach)
+            if self.rocket.power_off_drag.get_domain_dim() == 1:
+                drag_coeff = self.rocket.power_off_drag.get_value_opt(free_stream_mach)
+            else:
+                drag_coeff = self.rocket.power_off_drag.get_value_opt(
+                    free_stream_mach, z
+                )
         R3 += -0.5 * rho * (free_stream_speed**2) * self.rocket.area * drag_coeff
         for air_brakes in self.rocket.air_brakes:
             if air_brakes.deployment_level > 0:

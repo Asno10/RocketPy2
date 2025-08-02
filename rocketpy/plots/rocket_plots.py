@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Patch
 
 from rocketpy.motors import EmptyMotor, HybridMotor, LiquidMotor, SolidMotor
 from rocketpy.rocket.aero_surface import Fins, NoseCone, Tail
@@ -103,36 +104,87 @@ class _RocketPlots:
         None
         """
 
-        try:
-            x_power_drag_on = self.rocket.power_on_drag.x_array
-            y_power_drag_on = self.rocket.power_on_drag.y_array
-        except AttributeError:
-            x_power_drag_on = np.linspace(0, 2, 50)
-            y_power_drag_on = np.array(
-                [self.rocket.power_on_drag.source(x) for x in x_power_drag_on]
-            )
-        try:
-            x_power_drag_off = self.rocket.power_off_drag.x_array
-            y_power_drag_off = self.rocket.power_off_drag.y_array
-        except AttributeError:
-            x_power_drag_off = np.linspace(0, 2, 50)
-            y_power_drag_off = np.array(
-                [self.rocket.power_off_drag.source(x) for x in x_power_drag_off]
+        if (
+            self.rocket.power_on_drag.get_domain_dim() == 1
+            and self.rocket.power_off_drag.get_domain_dim() == 1
+        ):
+            try:
+                x_power_drag_on = self.rocket.power_on_drag.x_array
+                y_power_drag_on = self.rocket.power_on_drag.y_array
+            except AttributeError:
+                x_power_drag_on = np.linspace(0, 2, 50)
+                y_power_drag_on = np.array(
+                    [self.rocket.power_on_drag.source(x) for x in x_power_drag_on]
+                )
+            try:
+                x_power_drag_off = self.rocket.power_off_drag.x_array
+                y_power_drag_off = self.rocket.power_off_drag.y_array
+            except AttributeError:
+                x_power_drag_off = np.linspace(0, 2, 50)
+                y_power_drag_off = np.array(
+                    [self.rocket.power_off_drag.source(x) for x in x_power_drag_off]
+                )
+
+            _, ax = plt.subplots()
+            ax.plot(x_power_drag_on, y_power_drag_on, label="Power on Drag")
+            ax.plot(
+                x_power_drag_off, y_power_drag_off, label="Power off Drag", linestyle="--"
             )
 
-        _, ax = plt.subplots()
-        ax.plot(x_power_drag_on, y_power_drag_on, label="Power on Drag")
-        ax.plot(
-            x_power_drag_off, y_power_drag_off, label="Power off Drag", linestyle="--"
-        )
+            ax.set_title("Drag Curves")
+            ax.set_ylabel("Drag Coefficient")
+            ax.set_xlabel("Mach")
+            ax.axvspan(0.8, 1.2, alpha=0.3, color="gray", label="Transonic Region")
+            ax.legend(loc="best", shadow=True)
+            plt.grid(True)
+            show_or_save_plot(filename)
+        else:
+            # 3D surface plot for drag coefficient vs Mach vs Altitude
+            x_on = self.rocket.power_on_drag.x_array
+            y_on = self.rocket.power_on_drag.y_array
+            x_off = self.rocket.power_off_drag.x_array
+            y_off = self.rocket.power_off_drag.y_array
 
-        ax.set_title("Drag Curves")
-        ax.set_ylabel("Drag Coefficient")
-        ax.set_xlabel("Mach")
-        ax.axvspan(0.8, 1.2, alpha=0.3, color="gray", label="Transonic Region")
-        ax.legend(loc="best", shadow=True)
-        plt.grid(True)
-        show_or_save_plot(filename)
+            x_min = min(x_on.min(), x_off.min())
+            x_max = max(x_on.max(), x_off.max())
+            y_min = min(y_on.min(), y_off.min())
+            y_max = max(y_on.max(), y_off.max())
+
+            mach = np.linspace(x_min, x_max, 30)
+            altitude = np.linspace(y_min, y_max, 30)
+            mesh_mach, mesh_alt = np.meshgrid(mach, altitude)
+
+            z_on = np.array(
+                self.rocket.power_on_drag.get_value(
+                    mesh_mach.flatten(), mesh_alt.flatten()
+                )
+            ).reshape(mesh_mach.shape)
+            z_off = np.array(
+                self.rocket.power_off_drag.get_value(
+                    mesh_mach.flatten(), mesh_alt.flatten()
+                )
+            ).reshape(mesh_mach.shape)
+
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection="3d")
+            surf_on = ax.plot_surface(
+                mesh_mach, mesh_alt, z_on, cmap="viridis", alpha=0.7
+            )
+            surf_off = ax.plot_surface(
+                mesh_mach, mesh_alt, z_off, cmap="plasma", alpha=0.7
+            )
+
+            ax.set_title("Drag Curves")
+            ax.set_xlabel("Mach")
+            ax.set_ylabel("Altitude (m)")
+            ax.set_zlabel("Drag Coefficient")
+
+            legend_elements = [
+                Patch(facecolor=plt.cm.viridis(0.6), label="Power on Drag"),
+                Patch(facecolor=plt.cm.plasma(0.6), label="Power off Drag"),
+            ]
+            ax.legend(handles=legend_elements, loc="best", shadow=True)
+            show_or_save_plot(filename)
 
     def thrust_to_weight(self):
         """
