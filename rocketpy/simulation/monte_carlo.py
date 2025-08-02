@@ -221,7 +221,9 @@ class MonteCarlo:
         self.number_of_simulations = number_of_simulations
         self._initial_sim_idx = self.num_of_loaded_sims if append else 0
 
-        _SimMonitor.reprint("Starting Monte Carlo analysis")
+        _SimMonitor.reprint(
+            f"Starting Monte Carlo analysis with {self.number_of_simulations} iterations"
+        )
 
         self.__setup_files(append)
 
@@ -1217,24 +1219,29 @@ class _SimMonitor:
         return self.count
 
     def print_update_status(self, sim_idx):
-        """Prints a message on the same line as the previous one and replaces
-        the previous message with the new one, deleting the extra characters
-        from the previous message.
+        """Prints the simulation progress on the same line as the previous
+        message, replacing the previous content and deleting any extra
+        characters from the previous message.
 
         Parameters
         ----------
         sim_idx : int
-            Index of the current simulation.
+            Index of the current simulation. This argument is kept for
+            backwards compatibility and is not used in the message
+            composition.
 
         Returns
         -------
         None
         """
 
+        del sim_idx  # unused but kept for backwards compatibility
+
         average_time = (time() - self.start_time) / (self.count - self.initial_count)
         estimated_time = int((self.n_simulations - self.count) * average_time)
+        progress = self.count / self.n_simulations * 100
 
-        msg = f"Current iteration: {sim_idx:06d}"
+        msg = f"Iteration {self.count:06d}/{self.n_simulations:06d} ({progress:5.1f}%)"
         msg += f" | Average Time per Iteration: {average_time:.3f} s"
         msg += f" | Estimated time left: {estimated_time} s"
 
