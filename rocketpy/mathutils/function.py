@@ -369,6 +369,22 @@ class Function:  # pylint: disable=too-many-public-methods
         """Defines interpolation function used by the Function. Each
         interpolation method has its own function`.
         The function is stored in the attribute _interpolation_func."""
+        # If a drag curve is provided with more than two input columns, raise an
+        # informative error to guide the user. Drag curves are expected to have
+        # Mach and altitude as inputs only. Extra columns usually indicate a
+        # misformatted CSV.
+        if self.__dom_dim__ > 2:
+            inputs = self.__inputs__
+            if isinstance(inputs, str) or not isinstance(inputs, Iterable):
+                inputs_list = [inputs]
+            else:
+                inputs_list = list(inputs)
+            if any(inp is not None and "Mach" in str(inp) for inp in inputs_list):
+                raise ValueError(
+                    "Drag curve data must contain exactly two input columns: Mach and altitude. "
+                    f"Detected {self.__dom_dim__} input columns. Ensure the CSV layout is 'Mach, Altitude, Drag Coefficient'."
+                )
+
         interpolation = INTERPOLATION_TYPES[self.__interpolation__]
         if interpolation == 0:  # linear
             if self.__dom_dim__ == 1:

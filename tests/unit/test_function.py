@@ -1199,3 +1199,22 @@ def test_short_time_fft(
         else:
             assert np.all(frequencies >= -sampling_frequency / 2)
             assert np.all(frequencies <= sampling_frequency / 2)
+
+
+def test_drag_curve_csv_with_extra_columns(tmp_path):
+    """Ensure drag curve CSV files with more than two input columns raise an error."""
+
+    csv_file = tmp_path / "bad_drag_curve.csv"
+    csv_file.write_text(
+        "Mach,Altitude,Extra,Cd\n"
+        "0,0,0,0.1\n"
+        "0.5,1000,0.2,0.2\n"
+        "1.0,2000,0.3,0.3\n"
+        "1.5,3000,0.4,0.4\n"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Drag curve data must contain exactly two input columns: Mach and altitude",
+    ):
+        Function(str(csv_file), inputs=["Mach", "Altitude"], outputs="Drag Coefficient")
