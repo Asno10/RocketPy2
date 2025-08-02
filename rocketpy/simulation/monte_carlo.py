@@ -1267,7 +1267,7 @@ class _SimMonitor:
         msg += f" | Average Time per Iteration: {average_time:.3f} s"
         msg += f" | Estimated time left: {estimated_time} s"
 
-        _SimMonitor.reprint(msg, end="\r", flush=True)
+        _SimMonitor.reprint(msg, end="\n", flush=True)
 
     def print_final_status(self):
         """Prints the final status of the simulation."""
