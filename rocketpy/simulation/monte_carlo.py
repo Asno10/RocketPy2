@@ -168,6 +168,7 @@ class MonteCarlo:
         append=False,
         parallel=False,
         n_workers=None,
+        verbose=True,
         **kwargs,
     ):  # pylint: disable=too-many-statements
         """
@@ -187,6 +188,9 @@ class MonteCarlo:
             number of workers will be equal to the number of CPUs available.
             A minimum of 2 workers is required for parallel mode.
             Default is None.
+        verbose : bool, optional
+            If True, display progress information during the simulation. Set to
+            False to disable status output. Default is True.
         kwargs : dict
             Custom arguments for simulation export of the ``inputs`` file. Options
             are:
@@ -221,6 +225,7 @@ class MonteCarlo:
         self.number_of_simulations = number_of_simulations
         self._initial_sim_idx = self.num_of_loaded_sims if append else 0
 
+        _SimMonitor.set_verbose(verbose)
         _SimMonitor.reprint(
             f"Starting Monte Carlo analysis with {self.number_of_simulations} iterations"
         )
@@ -299,12 +304,14 @@ class MonteCarlo:
             sim_monitor.print_final_status()
 
         except KeyboardInterrupt:
-            _SimMonitor.reprint("Keyboard Interrupt, files saved.")
+            _SimMonitor.reprint("Keyboard Interrupt, files saved.", always=True)
             with open(self._error_file, "a", encoding="utf-8") as f:
                 f.write(inputs_json)
 
         except Exception as error:
-            _SimMonitor.reprint(f"Error on iteration {sim_monitor.count}: {error}")
+            _SimMonitor.reprint(
+                f"Error on iteration {sim_monitor.count}: {error}", always=True
+            )
             with open(self._error_file, "a", encoding="utf-8") as f:
                 f.write(inputs_json)
             raise error
@@ -420,7 +427,8 @@ class MonteCarlo:
                     if error_event.is_set():
                         sim_monitor.reprint(
                             "Simulation Interrupt, files from simulation "
-                            f"{sim_idx} saved."
+                            f"{sim_idx} saved.",
+                            always=True,
                         )
                         with open(self.error_file, "a", encoding="utf-8") as f:
                             f.write(inputs_json)
@@ -441,8 +449,8 @@ class MonteCarlo:
             with open(self.error_file, "a", encoding="utf-8") as f:
                 f.write(inputs_json)
 
-            sim_monitor.reprint(f"Error on iteration {sim_idx}:")
-            sim_monitor.reprint(traceback.format_exc())
+            sim_monitor.reprint(f"Error on iteration {sim_idx}:", always=True)
+            sim_monitor.reprint(traceback.format_exc(), always=True)
             error_event.set()
             mutex.release()
 
@@ -1204,6 +1212,11 @@ class _SimMonitor:
     """Class to monitor the simulation progress and display the status."""
 
     _last_print_len = 0
+    _verbose = True
+
+    @staticmethod
+    def set_verbose(verbose: bool):
+        _SimMonitor._verbose = verbose
 
     def __init__(self, initial_count, n_simulations, start_time):
         self.initial_count = initial_count
@@ -1249,7 +1262,8 @@ class _SimMonitor:
 
     def print_final_status(self):
         """Prints the final status of the simulation."""
-        print()
+        if _SimMonitor._verbose:
+            print()
         msg = f"Completed {self.count - self.initial_count} iterations."
         msg += f" In total, {self.count} simulations are exported.\n"
         msg += f"Total wall time: {time() - self.start_time:.1f} s"
@@ -1257,7 +1271,7 @@ class _SimMonitor:
         _SimMonitor.reprint(msg, end="\n", flush=True)
 
     @staticmethod
-    def reprint(msg, end="\n", flush=True):
+    def reprint(msg, end="\n", flush=True, always=False):
         """
         Prints a message on the same line as the previous one and replaces the
         previous message with the new one, deleting the extra characters from
@@ -1271,11 +1285,16 @@ class _SimMonitor:
             String appended after the message. Default is a new line.
         flush : bool, optional
             If True, the output is flushed. Default is True.
+        always : bool, optional
+            If True, print regardless of verbosity settings. Default is False.
 
         Returns
         -------
         None
         """
+
+        if not (_SimMonitor._verbose or always):
+            return
 
         padding = ""
 
