@@ -168,7 +168,6 @@ class MonteCarlo:
         append=False,
         parallel=False,
         n_workers=None,
-        verbose=True,
         **kwargs,
     ):  # pylint: disable=too-many-statements
         """
@@ -188,9 +187,6 @@ class MonteCarlo:
             number of workers will be equal to the number of CPUs available.
             A minimum of 2 workers is required for parallel mode.
             Default is None.
-        verbose : bool, optional
-            If True, display progress information during the simulation. Set to
-            False to disable status output. Default is True.
         kwargs : dict
             Custom arguments for simulation export of the ``inputs`` file. Options
             are:
@@ -225,10 +221,7 @@ class MonteCarlo:
         self.number_of_simulations = number_of_simulations
         self._initial_sim_idx = self.num_of_loaded_sims if append else 0
 
-        _SimMonitor.set_verbose(verbose)
-        _SimMonitor.reprint(
-            f"Starting Monte Carlo analysis with {self.number_of_simulations} iterations"
-        )
+        _SimMonitor.reprint("Starting Monte Carlo analysis")
 
         self.__setup_files(append)
 
@@ -304,14 +297,12 @@ class MonteCarlo:
             sim_monitor.print_final_status()
 
         except KeyboardInterrupt:
-            _SimMonitor.reprint("Keyboard Interrupt, files saved.", always=True)
+            _SimMonitor.reprint("Keyboard Interrupt, files saved.")
             with open(self._error_file, "a", encoding="utf-8") as f:
                 f.write(inputs_json)
 
         except Exception as error:
-            _SimMonitor.reprint(
-                f"Error on iteration {sim_monitor.count}: {error}", always=True
-            )
+            _SimMonitor.reprint(f"Error on iteration {sim_monitor.count}: {error}")
             with open(self._error_file, "a", encoding="utf-8") as f:
                 f.write(inputs_json)
             raise error
@@ -336,16 +327,14 @@ class MonteCarlo:
 
         multiprocess, managers = _import_multiprocess()
 
-        progress_queue = multiprocess.Queue()
         with _create_multiprocess_manager(multiprocess, managers) as manager:
             mutex = manager.Lock()
             simulation_error_event = manager.Event()
-            sim_monitor = _SimMonitor(
+            sim_monitor = manager._SimMonitor(
                 initial_count=self._initial_sim_idx,
                 n_simulations=self.number_of_simulations,
                 start_time=time(),
             )
-            index_counter = multiprocess.Value("i", self._initial_sim_idx)
 
             processes = []
             seeds = np.random.SeedSequence().spawn(n_workers)
@@ -355,23 +344,15 @@ class MonteCarlo:
                     target=self.__sim_producer,
                     args=(
                         seed,
-                        index_counter,
+                        sim_monitor,
                         mutex,
                         simulation_error_event,
-                        progress_queue,
                     ),
                 )
                 processes.append(sim_producer)
                 sim_producer.start()
 
             try:
-                completed = 0
-                while completed < self.number_of_simulations:
-                    progress_queue.get()
-                    completed += 1
-                    sim_monitor.increment()
-                    sim_monitor.print_update_status(sim_monitor.count)
-
                 for sim_producer in processes:
                     sim_producer.join()
 
@@ -404,21 +385,19 @@ class MonteCarlo:
             raise ValueError("Number of workers must be at least 2 for parallel mode.")
         return n_workers
 
-    def __sim_producer(self, seed, index_counter, mutex, error_event, progress_queue):  # pylint: disable=too-many-statements
+    def __sim_producer(self, seed, sim_monitor, mutex, error_event):  # pylint: disable=too-many-statements
         """Simulation producer to be used in parallel by multiprocessing.
 
         Parameters
         ----------
         seed : int
             The seed to set the random number generator.
-        index_counter : multiprocess.Value
-            Shared counter for assigning simulation indices.
+        sim_monitor : _SimMonitor
+            The simulation monitor object to keep track of the simulations.
         mutex : multiprocess.Lock
             The mutex to lock access to critical regions.
         error_event : multiprocess.Event
             Event signaling an error occurred during the simulation.
-        progress_queue : multiprocess.Queue
-            Queue used to report completed simulations back to the main process.
         """
         try:
             # Ensure Processes generate different random numbers
@@ -426,12 +405,8 @@ class MonteCarlo:
             self.rocket._set_stochastic(seed)
             self.flight._set_stochastic(seed)
 
-            while True:
-                with index_counter.get_lock():
-                    sim_idx = index_counter.value
-                    index_counter.value += 1
-                if sim_idx >= self.number_of_simulations:
-                    break
+            while sim_monitor.keep_simulating():
+                sim_idx = sim_monitor.increment() - 1
                 inputs_json, outputs_json = "", ""
 
                 flight = self.__run_single_simulation()
@@ -441,15 +416,21 @@ class MonteCarlo:
                 try:
                     mutex.acquire()
                     if error_event.is_set():
+                        sim_monitor.reprint(
+                            "Simulation Interrupt, files from simulation "
+                            f"{sim_idx} saved."
+                        )
                         with open(self.error_file, "a", encoding="utf-8") as f:
                             f.write(inputs_json)
+
                         break
 
                     with open(self.input_file, "a", encoding="utf-8") as f:
                         f.write(inputs_json)
                     with open(self.output_file, "a", encoding="utf-8") as f:
                         f.write(outputs_json)
-                    progress_queue.put(1)
+
+                    sim_monitor.print_update_status(sim_idx)
                 finally:
                     mutex.release()
 
@@ -458,8 +439,8 @@ class MonteCarlo:
             with open(self.error_file, "a", encoding="utf-8") as f:
                 f.write(inputs_json)
 
-            _SimMonitor.reprint(f"Error on iteration {sim_idx}:", always=True)
-            _SimMonitor.reprint(traceback.format_exc(), always=True)
+            sim_monitor.reprint(f"Error on iteration {sim_idx}:")
+            sim_monitor.reprint(traceback.format_exc())
             error_event.set()
             mutex.release()
 
@@ -1221,11 +1202,6 @@ class _SimMonitor:
     """Class to monitor the simulation progress and display the status."""
 
     _last_print_len = 0
-    _verbose = True
-
-    @staticmethod
-    def set_verbose(verbose: bool):
-        _SimMonitor._verbose = verbose
 
     def __init__(self, initial_count, n_simulations, start_time):
         self.initial_count = initial_count
@@ -1241,38 +1217,32 @@ class _SimMonitor:
         return self.count
 
     def print_update_status(self, sim_idx):
-        """Prints the simulation progress on the same line as the previous
-        message, replacing the previous content and deleting any extra
-        characters from the previous message.
+        """Prints a message on the same line as the previous one and replaces
+        the previous message with the new one, deleting the extra characters
+        from the previous message.
 
         Parameters
         ----------
         sim_idx : int
-            Index of the current simulation. This argument is kept for
-            backwards compatibility and is not used in the message
-            composition.
+            Index of the current simulation.
 
         Returns
         -------
         None
         """
 
-        del sim_idx  # unused but kept for backwards compatibility
-
         average_time = (time() - self.start_time) / (self.count - self.initial_count)
         estimated_time = int((self.n_simulations - self.count) * average_time)
-        progress = self.count / self.n_simulations * 100
 
-        msg = f"Iteration {self.count:06d}/{self.n_simulations:06d} ({progress:5.1f}%)"
+        msg = f"Current iteration: {sim_idx:06d}"
         msg += f" | Average Time per Iteration: {average_time:.3f} s"
         msg += f" | Estimated time left: {estimated_time} s"
 
-        _SimMonitor.reprint(msg, end="\n", flush=True)
+        _SimMonitor.reprint(msg, end="\r", flush=True)
 
     def print_final_status(self):
         """Prints the final status of the simulation."""
-        if _SimMonitor._verbose:
-            print()
+        print()
         msg = f"Completed {self.count - self.initial_count} iterations."
         msg += f" In total, {self.count} simulations are exported.\n"
         msg += f"Total wall time: {time() - self.start_time:.1f} s"
@@ -1280,7 +1250,7 @@ class _SimMonitor:
         _SimMonitor.reprint(msg, end="\n", flush=True)
 
     @staticmethod
-    def reprint(msg, end="\n", flush=True, always=False):
+    def reprint(msg, end="\n", flush=True):
         """
         Prints a message on the same line as the previous one and replaces the
         previous message with the new one, deleting the extra characters from
@@ -1294,16 +1264,11 @@ class _SimMonitor:
             String appended after the message. Default is a new line.
         flush : bool, optional
             If True, the output is flushed. Default is True.
-        always : bool, optional
-            If True, print regardless of verbosity settings. Default is False.
 
         Returns
         -------
         None
         """
-
-        if not (_SimMonitor._verbose or always):
-            return
 
         padding = ""
 
